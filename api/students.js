@@ -1,11 +1,25 @@
 const { createClient } = require('@supabase/supabase-js');
 
+// Log environment variables for debugging (remove in production)
+console.log('Environment Variables:', {
+  NODE_ENV: process.env.NODE_ENV,
+  SUPABASE_URL: process.env.SUPABASE_URL ? 'Set' : 'Missing',
+  VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL ? 'Set' : 'Missing',
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing',
+  VITE_SUPABASE_SERVICE_ROLE_KEY: process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing'
+});
+
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Missing required Supabase environment variables');
-  process.exit(1);
+  const error = new Error('Missing required Supabase environment variables');
+  console.error('Error:', {
+    message: error.message,
+    SUPABASE_URL: SUPABASE_URL ? 'Set' : 'Missing',
+    SUPABASE_SERVICE_ROLE_KEY: SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing'
+  });
+  throw error;
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -53,34 +67,60 @@ module.exports = async (req, res) => {
       
       // Extract and validate required fields
       const { name, email, grade } = body;
-      
+      console.log('Processing student data:', { 
+        name, 
+        email, 
+        grade,
+        hasPassword: !!body.password,
+        body: JSON.stringify(body, null, 2)
+      });
+
       if (!name) {
-        return res.status(400).json({
-          success: false,
-          error: 'Name is required',
-          details: { received: body, required: ['name'] }
-        });
+        const error = new Error('Name is required');
+        error.details = { 
+          received: body,
+          required: ['name']
+        };
+        console.error('Validation error:', error);
+        throw error;
       }
 
       console.log('Attempting to create student profile...');
       
       // Create the profile with only existing columns
+      const studentData = {
+        full_name: name,
+        email: email || `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`,
+        grade: grade ? parseInt(grade, 10) : null,
+        role: 'student'
+      };
+
+      console.log('Attempting to insert student:', JSON.stringify(studentData, null, 2));
+
       const { data, error } = await supabase
         .from('profiles')
-        .insert([{
-          full_name: name,
-          email: email || `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`,
-          grade: grade ? parseInt(grade, 10) : null,
-          role: 'student'
-        }])
+        .insert([studentData])
         .select();
 
       if (error) {
-        console.error('Database error:', error);
+        console.error('Database error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          table: error.table,
+          constraint: error.constraint
+        });
+        
         return res.status(400).json({
           success: false,
           error: 'Failed to create student',
-          details: error
+          message: error.message,
+          details: {
+            code: error.code,
+            hint: error.hint,
+            table: error.table
+          }
         });
       }
 
