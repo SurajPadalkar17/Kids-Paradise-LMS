@@ -134,7 +134,8 @@ const AdminDashboard = () => {
   const [studentForm, setStudentForm] = useState({ 
     name: "", 
     email: "", 
-    grade: ""
+    grade: "",
+    password: ""
   });
   const [activities, setActivities] = useState(
     [
@@ -356,12 +357,17 @@ const AdminDashboard = () => {
       toast.error("Name is required");
       return;
     }
+    if (!studentForm.password) {
+      toast.error("Password is required");
+      return;
+    }
     (async () => {
       try {
         await studentApi.create({
           name: studentForm.name,
           email: studentForm.email,
-          grade: studentForm.grade
+          grade: studentForm.grade,
+          password: studentForm.password
         });
 
         toast.success("Student created successfully!");
@@ -386,7 +392,8 @@ const AdminDashboard = () => {
         setStudentForm({ 
           name: "", 
           email: "", 
-          grade: ""
+          grade: "",
+          password: ""
         });
       } catch (err: any) {
         toast.error(err.message || "Failed to create student");
@@ -614,6 +621,17 @@ const AdminDashboard = () => {
                         placeholder="e.g. 5 (optional)" 
                         value={studentForm.grade} 
                         onChange={(e) => setStudentForm(s => ({ ...s, grade: e.target.value }))} 
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="studentPassword">Password *</Label>
+                      <Input 
+                        id="studentPassword" 
+                        type="password"
+                        placeholder="Set a password for the student" 
+                        value={studentForm.password} 
+                        onChange={(e) => setStudentForm(s => ({ ...s, password: e.target.value }))}
+                        required
                       />
                     </div>
                     <DialogFooter>
