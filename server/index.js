@@ -1,15 +1,8 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
-import express from 'express';
-import cors from 'cors';
-import { createClient } from '@supabase/supabase-js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-// Load env from server/.env first (preferred), then fallback to project root .env for local dev
-dotenv.config({ path: path.resolve(__dirname, '.env') });
-dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -36,9 +29,17 @@ const corsOptions = {
     if (isLocalhost) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
   },
-  credentials: false,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 204
 };
+
+// Apply CORS with options
 app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
 app.use(express.json());
 // Basic request logger
 app.use((req, _res, next) => {
@@ -99,9 +100,22 @@ app.post('/api/students', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+// Start the server
+const server = app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log('Allowed origins:', ALLOWED_ORIGINS);
 });
+
+// Handle shutdown gracefully
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received. Shutting down gracefully');
+  server.close(() => {
+    console.log('Process terminated');
+  });
+});
+
+// Export for Vercel
+module.exports = app;
 
 // Log unexpected exits to diagnose auto-closing
 process.on('unhandledRejection', (reason) => {
