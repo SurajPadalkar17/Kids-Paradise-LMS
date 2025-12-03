@@ -28,7 +28,7 @@
       }
     },
     {
-      "src": "/(.*\.(js|css|json|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot))",
+      "src": "/(.*\\.(js|css|json|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot))",
       "headers": {
         "cache-control": "public, max-age=86400, s-maxage=86400, must-revalidate"
       }
