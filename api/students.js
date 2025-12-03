@@ -17,6 +17,14 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   }
 });
 
+// Create auth client for signup operations
+const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
+
 // Helper function to parse request body
 async function parseRequestBody(req) {
   return new Promise((resolve) => {
@@ -70,41 +78,47 @@ module.exports = async (req, res) => {
       console.log('Attempting to create student...');
       
       try {
-        // Create auth user
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        // First, sign up the user
+        const { data: authData, error: signUpError } = await supabaseAuth.auth.signUp({
           email,
           password,
-          email_confirm: true,
-          user_metadata: {
-            full_name: name,
-            role: 'student'
+          options: {
+            data: {
+              full_name: name,
+              role: 'student'
+            },
+            emailRedirectTo: 'https://kids-paradise-lms.vercel.app/dashboard'
           }
         });
 
-        if (authError) throw authError;
+        if (signUpError) throw signUpError;
 
         const userId = authData.user.id;
         
-        // Create profile
-        const { data, error: dbError } = await supabase
+        // Then create the profile
+        const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .insert([{ 
+          .insert([{
             id: userId,
             full_name: name,
             email,
             age: parseInt(age, 10),
-            grade, 
-            parent_name: parentName, 
-            contact_number: contactNumber, 
+            grade,
+            parent_name: parentName,
+            contact_number: contactNumber,
             address,
             role: 'student'
           }])
           .select();
 
-        if (dbError) throw dbError;
+        if (profileError) {
+          // If profile creation fails, try to delete the auth user
+          await supabase.auth.admin.deleteUser(userId);
+          throw profileError;
+        }
 
         console.log('Student created successfully');
-        return res.status(201).json({ 
+        return res.status(201).json({
           success: true,
           data: {
             id: userId,
@@ -118,7 +132,8 @@ module.exports = async (req, res) => {
         console.error('Error creating student:', error);
         return res.status(500).json({ 
           error: 'Failed to create student',
-          details: error.message
+          message: error.message,
+          ...(process.env.NODE_ENV === 'development' && { details: error })
         });
       }
       
