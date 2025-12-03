@@ -1,6 +1,7 @@
-// Use relative path for Vercel deployment
-// If VITE_API_BASE is '/api', use empty string to avoid duplicate /api in the URL
-const API_BASE = import.meta.env.VITE_API_BASE === '/api' ? '' : (import.meta.env.VITE_API_BASE || '');
+// Handle both development and production environments
+const API_BASE = import.meta.env.DEV 
+  ? 'http://localhost:4001'  // Use local server in development
+  : (import.meta.env.VITE_API_BASE || '/api');  // Use /api in production (will be rewritten by Vercel)
 
 export const api = {
   get: async (endpoint: string) => {
