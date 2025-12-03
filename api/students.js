@@ -157,10 +157,44 @@ export default async (req, res) => {
         throw error;
       }
 
-      // Insert the new student
+      // First, create the auth user
+      console.log('Creating auth user with email:', studentData.email);
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: studentData.email,
+        password: Math.random().toString(36).slice(2) + 'A1!', // Generate a strong random password
+        email_confirm: true, // Auto-confirm the email
+        user_metadata: {
+          full_name: studentData.full_name
+        }
+      });
+
+      if (authError) {
+        console.error('Auth error:', authError);
+        return res.status(400).json({
+          success: false,
+          error: 'Failed to create user account',
+          message: authError.message,
+          details: {
+            code: authError.code,
+            hint: authError.hint
+          }
+        });
+      }
+
+      console.log('Auth user created, ID:', authData.user.id);
+      
+      // Then create the profile with the same ID as the auth user
       const { data, error } = await supabase
         .from('profiles')
-        .insert([studentData])
+        .insert([{
+          id: authData.user.id, // Use the same ID from auth
+          full_name: studentData.full_name,
+          email: studentData.email,
+          grade: studentData.grade,
+          role: 'student',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
         .select('id, full_name, email, grade, role, created_at, updated_at');
 
       if (error) {
@@ -173,9 +207,12 @@ export default async (req, res) => {
           constraint: error.constraint
         });
         
+        // Attempt to clean up the auth user if profile creation fails
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        
         return res.status(400).json({
           success: false,
-          error: 'Failed to create student',
+          error: 'Failed to create student profile',
           message: error.message,
           details: {
             code: error.code,
