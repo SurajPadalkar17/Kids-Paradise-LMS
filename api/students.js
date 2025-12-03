@@ -1,15 +1,20 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+  console.error('Missing required Supabase environment variables');
   process.exit(1);
 }
 
+// Create admin client with service role key for all operations
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
 });
 
 // Helper function to parse request body
@@ -49,8 +54,8 @@ module.exports = async (req, res) => {
       
       // Extract and validate required fields
       const { name, age, grade, parentName, contactNumber, address } = body;
-      const email = body.email || `${name.replace(/\s+/g, '.').toLowerCase()}@example.com`;
-      const password = body.password || 'defaultPassword123!'; // In production, generate a secure password
+      const email = body.email || `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`;
+      const password = body.password || `Student@${Math.random().toString(36).slice(-8)}`;
 
       console.log('Received student data:', { name, email, age, grade, parentName, contactNumber, address });
 
@@ -62,34 +67,28 @@ module.exports = async (req, res) => {
         });
       }
 
-      console.log('Attempting to create student in profiles table...');
+      console.log('Attempting to create student...');
       
-      // First, create auth user
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: name,
-          role: 'student'
-        }
-      });
-
-      if (authError) {
-        console.error('Auth error:', authError);
-        return res.status(500).json({ 
-          error: 'Failed to create user in auth system',
-          details: authError.message
+      try {
+        // Create auth user
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: name,
+            role: 'student'
+          }
         });
-      }
 
-      const userId = authData.user.id;
-      
-      // Then, create profile
-      const { data, error } = await supabase
-        .from('profiles')
-        .insert([
-          { 
+        if (authError) throw authError;
+
+        const userId = authData.user.id;
+        
+        // Create profile
+        const { data, error: dbError } = await supabase
+          .from('profiles')
+          .insert([{ 
             id: userId,
             full_name: name,
             email,
@@ -98,34 +97,30 @@ module.exports = async (req, res) => {
             parent_name: parentName, 
             contact_number: contactNumber, 
             address,
-            role: 'student',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ])
-        .select();
+            role: 'student'
+          }])
+          .select();
 
-      if (error) {
-        console.error('Supabase error:', error);
-        // Clean up auth user if profile creation fails
-        await supabase.auth.admin.deleteUser(userId);
-        
+        if (dbError) throw dbError;
+
+        console.log('Student created successfully');
+        return res.status(201).json({ 
+          success: true,
+          data: {
+            id: userId,
+            full_name: name,
+            email,
+            role: 'student'
+          }
+        });
+
+      } catch (error) {
+        console.error('Error creating student:', error);
         return res.status(500).json({ 
-          error: 'Database error',
-          details: error.message,
-          hint: error.hint || ''
+          error: 'Failed to create student',
+          details: error.message
         });
       }
-
-      console.log('Student created successfully:', data);
-      return res.status(201).json({ 
-        success: true,
-        data: {
-          ...data[0],
-          // Don't include sensitive data in the response
-          password: undefined
-        }
-      });
       
     } else if (req.method === 'GET') {
       console.log('Fetching all students...');
@@ -148,9 +143,13 @@ module.exports = async (req, res) => {
         success: true,
         count: data.length,
         data: data.map(student => ({
-          ...student,
-          // Don't include sensitive data in the response
-          password: undefined
+          id: student.id,
+          full_name: student.full_name,
+          email: student.email,
+          grade: student.grade,
+          parent_name: student.parent_name,
+          contact_number: student.contact_number,
+          created_at: student.created_at
         }))
       });
       
