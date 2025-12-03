@@ -221,23 +221,11 @@ export default async (req, res) => {
       
       console.log('Supabase connection successful, inserting student data...');
       
-      // First, check if a user with this email already exists
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', studentData.email)
-        .maybeSingle();
-
-      if (existingUser) {
-        const error = new Error('A user with this email already exists');
-        error.code = 'DUPLICATE_EMAIL';
-        throw error;
-      }
-
-      // First, create the auth user
+      // First, create the auth user with service role
       console.log('Creating auth user with email:', studentData.email);
       const password = body.password || Math.random().toString(36).slice(2) + 'A1!'; // Use provided password or generate a random one
       
+      // Create auth user with email confirmation
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: studentData.email,
         password: password,
@@ -245,72 +233,82 @@ export default async (req, res) => {
         user_metadata: {
           full_name: studentData.full_name,
           role: 'student'
+        },
+        // Ensure the user is created with the student role
+        app_metadata: {
+          role: 'student'
         }
       });
-      
-      // If password was provided, we need to sign in the user to set the session
-      if (body.password) {
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: studentData.email,
-          password: password
-        });
-        
-        if (signInError) {
-          console.error('Error signing in user after creation:', signInError);
-          // Continue with creation even if sign-in fails
-        }
-      }
 
       if (authError) {
-        console.error('Auth error:', authError);
-        return res.status(400).json({
-          success: false,
-          error: 'Failed to create user account',
-          message: authError.message,
-          details: {
-            code: authError.code,
-            hint: authError.hint
-          }
-        });
+        console.error('Auth user creation error:', authError);
+        throw new Error(`Failed to create auth user: ${authError.message}`);
       }
 
-      console.log('Auth user created, ID:', authData.user.id);
+      console.log('Auth user created successfully, ID:', authData.user.id);
       
-      // Then create the profile with the same ID as the auth user
-      const { data, error } = await supabase
+      // Create profile using the service role client
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .insert([{
-          id: authData.user.id, // Use the same ID from auth
-          full_name: studentData.full_name,
+          id: authData.user.id,
           email: studentData.email,
-          grade: studentData.grade,
+          full_name: studentData.full_name,
           role: 'student',
+          grade: studentData.grade,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }])
-        .select('id, full_name, email, grade, role, created_at, updated_at');
+        .select()
+        .single();
 
-      if (error) {
-        console.error('Database error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-          table: error.table,
-          constraint: error.constraint
-        });
-        
-        // Attempt to clean up the auth user if profile creation fails
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        // Clean up auth user if profile creation fails
         await supabase.auth.admin.deleteUser(authData.user.id);
+        throw new Error(`Failed to create user profile: ${profileError.message}`);
+      }
+
+      console.log('Profile created successfully:', profileData);
+      
+      // Sign in the user to set the session if password was provided
+      if (body.password) {
+        try {
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: studentData.email,
+            password: password
+          });
+          
+          if (signInError) {
+            console.error('Error signing in user after creation (non-fatal):', signInError);
+          } else {
+            console.log('User signed in successfully after creation');
+          }
+        } catch (signInError) {
+          console.error('Error during sign-in after user creation (non-fatal):', signInError);
+        }
+      }
+
+      // Check if a user with this email already exists
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', studentData.email)
+        .maybeSingle();
+
+      if (existingUser) {
+        // Clean up auth user if it was created
+        if (authData?.user?.id) {
+          await supabase.auth.admin.deleteUser(authData.user.id);
+        }
         
         return res.status(400).json({
           success: false,
-          error: 'Failed to create student profile',
-          message: error.message,
+          error: 'User with this email already exists',
+          message: 'A student with this email address is already registered',
           details: {
-            code: error.code,
-            hint: error.hint,
-            table: error.table
+            email: studentData.email,
+            existingUserId: existingUser.id
           }
         });
       }
@@ -319,10 +317,10 @@ export default async (req, res) => {
       return res.status(201).json({
         success: true,
         data: {
-          id: data[0].id,
-          full_name: name,
-          email: data[0].email,
-          grade: data[0].grade,
+          id: profileData.id,
+          full_name: profileData.full_name,
+          email: profileData.email,
+          grade: profileData.grade,
           role: 'student'
         }
       });
