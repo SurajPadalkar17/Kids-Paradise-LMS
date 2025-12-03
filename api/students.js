@@ -1,24 +1,14 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing required Supabase environment variables');
   process.exit(1);
 }
 
-// Create admin client with service role key for all operations
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
-
-// Create auth client for signup operations
-const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
@@ -59,83 +49,65 @@ module.exports = async (req, res) => {
     // Parse request body for POST requests
     if (req.method === 'POST') {
       const body = await parseRequestBody(req);
+      console.log('Request body:', JSON.stringify(body, null, 2));
       
       // Extract and validate required fields
       const { name, age, grade, parentName, contactNumber, address } = body;
       const email = body.email || `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`;
       const password = body.password || `Student@${Math.random().toString(36).slice(-8)}`;
 
-      console.log('Received student data:', { name, email, age, grade, parentName, contactNumber, address });
+      console.log('Processing student data:', { 
+        name, 
+        email, 
+        age, 
+        grade, 
+        parentName, 
+        contactNumber, 
+        address,
+        hasPassword: !!body.password
+      });
 
       if (!name || !age || !grade || !parentName || !contactNumber || !address) {
-        return res.status(400).json({ 
-          error: 'Missing required fields',
+        const error = new Error('Missing required fields');
+        error.details = { 
           received: body,
           required: ['name', 'age', 'grade', 'parentName', 'contactNumber', 'address']
-        });
+        };
+        throw error;
       }
 
-      console.log('Attempting to create student...');
+      console.log('Attempting to create student profile...');
       
-      try {
-        // First, sign up the user
-        const { data: authData, error: signUpError } = await supabaseAuth.auth.signUp({
+      // First, create the profile directly
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert([{
+          full_name: name,
           email,
-          password,
-          options: {
-            data: {
-              full_name: name,
-              role: 'student'
-            },
-            emailRedirectTo: 'https://kids-paradise-lms.vercel.app/dashboard'
-          }
-        });
+          age: parseInt(age, 10),
+          grade,
+          parent_name: parentName,
+          contact_number: contactNumber,
+          address,
+          role: 'student'
+        }])
+        .select();
 
-        if (signUpError) throw signUpError;
-
-        const userId = authData.user.id;
-        
-        // Then create the profile
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .insert([{
-            id: userId,
-            full_name: name,
-            email,
-            age: parseInt(age, 10),
-            grade,
-            parent_name: parentName,
-            contact_number: contactNumber,
-            address,
-            role: 'student'
-          }])
-          .select();
-
-        if (profileError) {
-          // If profile creation fails, try to delete the auth user
-          await supabase.auth.admin.deleteUser(userId);
-          throw profileError;
-        }
-
-        console.log('Student created successfully');
-        return res.status(201).json({
-          success: true,
-          data: {
-            id: userId,
-            full_name: name,
-            email,
-            role: 'student'
-          }
-        });
-
-      } catch (error) {
-        console.error('Error creating student:', error);
-        return res.status(500).json({ 
-          error: 'Failed to create student',
-          message: error.message,
-          ...(process.env.NODE_ENV === 'development' && { details: error })
-        });
+      if (error) {
+        console.error('Database error:', error);
+        throw new Error(`Database error: ${error.message}`);
       }
+
+      console.log('Student profile created successfully:', data);
+      return res.status(201).json({
+        success: true,
+        data: {
+          id: data[0].id,
+          full_name: name,
+          email,
+          role: 'student'
+        }
+      });
       
     } else if (req.method === 'GET') {
       console.log('Fetching all students...');
@@ -147,10 +119,7 @@ module.exports = async (req, res) => {
 
       if (error) {
         console.error('Error fetching students:', error);
-        return res.status(500).json({ 
-          error: 'Failed to fetch students',
-          details: error.message
-        });
+        throw new Error(`Failed to fetch students: ${error.message}`);
       }
 
       console.log(`Fetched ${data.length} students`);
@@ -175,11 +144,19 @@ module.exports = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Server error:', error);
+    console.error('Server error:', {
+      message: error.message,
+      stack: error.stack,
+      details: error.details || 'No additional details'
+    });
+    
     return res.status(500).json({ 
       error: 'Internal server error',
       message: error.message,
-      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      ...(process.env.NODE_ENV === 'development' && { 
+        details: error.details,
+        stack: error.stack 
+      })
     });
   }
 };
