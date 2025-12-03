@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build --minify 'esbuild' --mode production",
     "build:dev": "vite build --mode development",
-    "vercel-build": "npm install && npm run build && echo 'Vercel Build Complete' && ls -la dist/",
+    "vercel-build": "npm install --production=false && npm run build && echo 'Vercel Build Complete' && ls -la dist/",
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server/index.js"

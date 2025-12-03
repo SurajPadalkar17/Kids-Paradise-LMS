@@ -9,7 +9,9 @@
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "dist",
+        "installCommand": "npm install --production=false",
+        "buildCommand": "npm run build"
       }
     }
   ],
