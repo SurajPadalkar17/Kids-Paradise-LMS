@@ -52,50 +52,36 @@ module.exports = async (req, res) => {
       console.log('Request body:', JSON.stringify(body, null, 2));
       
       // Extract and validate required fields
-      const { name, age, grade, parentName, contactNumber, address } = body;
-      const email = body.email || `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`;
-      const password = body.password || `Student@${Math.random().toString(36).slice(-8)}`;
-
-      console.log('Processing student data:', { 
-        name, 
-        email, 
-        age, 
-        grade, 
-        parentName, 
-        contactNumber, 
-        address,
-        hasPassword: !!body.password
-      });
-
-      if (!name || !age || !grade || !parentName || !contactNumber || !address) {
-        const error = new Error('Missing required fields');
-        error.details = { 
-          received: body,
-          required: ['name', 'age', 'grade', 'parentName', 'contactNumber', 'address']
-        };
-        throw error;
+      const { name, email, grade } = body;
+      
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          error: 'Name is required',
+          details: { received: body, required: ['name'] }
+        });
       }
 
       console.log('Attempting to create student profile...');
       
-      // First, create the profile directly
+      // Create the profile with only existing columns
       const { data, error } = await supabase
         .from('profiles')
         .insert([{
           full_name: name,
-          email,
-          age: parseInt(age, 10),
-          grade,
-          parent_name: parentName,
-          contact_number: contactNumber,
-          address,
+          email: email || `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`,
+          grade: grade ? parseInt(grade, 10) : null,
           role: 'student'
         }])
         .select();
 
       if (error) {
         console.error('Database error:', error);
-        throw new Error(`Database error: ${error.message}`);
+        return res.status(400).json({
+          success: false,
+          error: 'Failed to create student',
+          details: error
+        });
       }
 
       console.log('Student profile created successfully:', data);
@@ -104,7 +90,8 @@ module.exports = async (req, res) => {
         data: {
           id: data[0].id,
           full_name: name,
-          email,
+          email: data[0].email,
+          grade: data[0].grade,
           role: 'student'
         }
       });
@@ -113,13 +100,17 @@ module.exports = async (req, res) => {
       console.log('Fetching all students...');
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, full_name, email, grade, created_at, updated_at')
         .eq('role', 'student')
         .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching students:', error);
-        throw new Error(`Failed to fetch students: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch students',
+          details: error
+        });
       }
 
       console.log(`Fetched ${data.length} students`);
@@ -131,14 +122,14 @@ module.exports = async (req, res) => {
           full_name: student.full_name,
           email: student.email,
           grade: student.grade,
-          parent_name: student.parent_name,
-          contact_number: student.contact_number,
-          created_at: student.created_at
+          created_at: student.created_at,
+          updated_at: student.updated_at
         }))
       });
       
     } else {
       return res.status(405).json({ 
+        success: false,
         error: 'Method not allowed',
         allowed: ['GET', 'POST', 'OPTIONS']
       });
@@ -151,6 +142,7 @@ module.exports = async (req, res) => {
     });
     
     return res.status(500).json({ 
+      success: false,
       error: 'Internal server error',
       message: error.message,
       ...(process.env.NODE_ENV === 'development' && { 

@@ -134,12 +134,7 @@ const AdminDashboard = () => {
   const [studentForm, setStudentForm] = useState({ 
     name: "", 
     email: "", 
-    grade: "", 
-    password: "",
-    age: "",
-    parentName: "",
-    contactNumber: "",
-    address: ""
+    grade: ""
   });
   const [activities, setActivities] = useState(
     [
@@ -357,9 +352,8 @@ const AdminDashboard = () => {
 
   const onSubmitStudent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentForm.name || !studentForm.email || !studentForm.password || 
-        !studentForm.age || !studentForm.parentName || !studentForm.contactNumber || !studentForm.address) {
-      toast.error("Please fill in all required fields");
+    if (!studentForm.name) {
+      toast.error("Name is required");
       return;
     }
     (async () => {
@@ -367,12 +361,7 @@ const AdminDashboard = () => {
         await studentApi.create({
           name: studentForm.name,
           email: studentForm.email,
-          grade: studentForm.grade,
-          password: studentForm.password,
-          age: studentForm.age,
-          parentName: studentForm.parentName,
-          contactNumber: studentForm.contactNumber,
-          address: studentForm.address
+          grade: studentForm.grade
         });
 
         toast.success("Student created successfully!");
@@ -397,12 +386,7 @@ const AdminDashboard = () => {
         setStudentForm({ 
           name: "", 
           email: "", 
-          grade: "", 
-          password: "",
-          age: "",
-          parentName: "",
-          contactNumber: "",
-          address: ""
+          grade: ""
         });
       } catch (err: any) {
         toast.error(err.message || "Failed to create student");
@@ -606,86 +590,30 @@ const AdminDashboard = () => {
                         id="studentName" 
                         placeholder="Student's full name" 
                         value={studentForm.name} 
-                        onChange={(e) => setStudentForm((s) => ({ ...s, name: e.target.value }))} 
+                        onChange={(e) => setStudentForm(s => ({ ...s, name: e.target.value }))} 
                         required 
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="studentEmail">Email *</Label>
+                      <Label htmlFor="studentEmail">Email</Label>
                       <Input 
                         id="studentEmail" 
                         type="email" 
-                        placeholder="name@example.com" 
+                        placeholder="name@example.com (optional)" 
                         value={studentForm.email} 
-                        onChange={(e) => setStudentForm((s) => ({ ...s, email: e.target.value }))} 
-                        required 
+                        onChange={(e) => setStudentForm(s => ({ ...s, email: e.target.value }))} 
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="studentAge">Age *</Label>
-                      <Input 
-                        id="studentAge" 
-                        type="number" 
-                        placeholder="e.g. 10" 
-                        min="3" 
-                        max="18"
-                        value={studentForm.age} 
-                        onChange={(e) => setStudentForm((s) => ({ ...s, age: e.target.value }))} 
-                        required 
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="studentGrade">Grade *</Label>
+                      <Label htmlFor="studentGrade">Grade</Label>
                       <Input 
                         id="studentGrade" 
-                        placeholder="e.g. 5" 
+                        type="number"
+                        min="1"
+                        max="12"
+                        placeholder="e.g. 5 (optional)" 
                         value={studentForm.grade} 
-                        onChange={(e) => setStudentForm((s) => ({ ...s, grade: e.target.value }))} 
-                        required 
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="parentName">Parent/Guardian Name *</Label>
-                      <Input 
-                        id="parentName" 
-                        placeholder="Parent/Guardian full name" 
-                        value={studentForm.parentName} 
-                        onChange={(e) => setStudentForm((s) => ({ ...s, parentName: e.target.value }))} 
-                        required 
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="contactNumber">Contact Number *</Label>
-                      <Input 
-                        id="contactNumber" 
-                        type="tel" 
-                        placeholder="+91 98765 43210" 
-                        value={studentForm.contactNumber} 
-                        onChange={(e) => setStudentForm((s) => ({ ...s, contactNumber: e.target.value }))} 
-                        required 
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="address">Address *</Label>
-                      <textarea 
-                        id="address" 
-                        className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="Full address" 
-                        value={studentForm.address} 
-                        onChange={(e) => setStudentForm((s) => ({ ...s, address: e.target.value }))} 
-                        required 
-                        rows={3}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="studentPassword">Temporary Password *</Label>
-                      <Input 
-                        id="studentPassword" 
-                        type="password" 
-                        placeholder="Set temporary password" 
-                        value={studentForm.password} 
-                        onChange={(e) => setStudentForm((s) => ({ ...s, password: e.target.value }))} 
-                        required 
+                        onChange={(e) => setStudentForm(s => ({ ...s, grade: e.target.value }))} 
                       />
                     </div>
                     <DialogFooter>
