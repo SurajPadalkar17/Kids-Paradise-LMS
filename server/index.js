@@ -11,47 +11,48 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY (server/.env preferred).');
+  console.warn('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Please check your environment variables.');
 }
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-// Define allowed origins
-const RAW_CORS = process.env.CORS_ORIGIN || 'http://localhost:5173,https://kids-paradise-lms.vercel.app';
-const ALLOWED_ORIGINS = [...new Set([
-  ...RAW_CORS.split(',').map((s) => s.trim()).filter(Boolean),
+// CORS Configuration
+const allowedOrigins = [
   'http://localhost:5173',
-  'https://kids-paradise-lms.vercel.app'
-])];
+  'https://kids-paradise-lms.vercel.app',
+  'https://kids-paradise.vercel.app',
+  'https://kids-paradise-admin.vercel.app'
+];
 
-console.log('Allowed CORS origins:', ALLOWED_ORIGINS);
+// Add any additional origins from environment variable
+if (process.env.CORS_ORIGINS) {
+  allowedOrigins.push(...process.env.CORS_ORIGINS.split(',').map(s => s.trim()));
+}
 
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      console.log('No origin header - allowing request');
-      return callback(null, true);
-    }
+    if (!origin) return callback(null, true);
     
-    // Check if origin is in allowed list
-    if (ALLOWED_ORIGINS.includes(origin) || 
-        ALLOWED_ORIGINS.includes('*') || 
-        origin.endsWith('.vercel.app')) {
-      console.log(`Origin ${origin} is allowed`);
+    // Check if origin is in allowed list or is a Vercel preview URL
+    if (
+      allowedOrigins.includes(origin) || 
+      allowedOrigins.includes('*') || 
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.vercel.app/') ||
+      origin.includes('vercel.app/_next')
+    ) {
       return callback(null, true);
     }
     
     // Allow localhost for development
-    const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(origin);
-    if (isLocalhost) {
-      console.log(`Localhost origin ${origin} is allowed`);
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(origin)) {
       return callback(null, true);
     }
     
-    console.error(`CORS blocked: ${origin} not in allowed origins`);
+    console.log(`Blocked by CORS: ${origin}`);
     return callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -77,7 +78,7 @@ app.use((req, res, next) => {
 
   // Add CORS headers to all responses
   const origin = headers.origin;
-  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.vercel.app'))) {
+  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
@@ -104,34 +105,24 @@ app.use(cors(corsOptions));
 // Parse JSON bodies
 app.use(express.json({ limit: '10mb' }));
 
+// Health check endpoint
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    version: process.env.npm_package_version || '1.0.0'
+  });
 });
 
-// Serve static files from the Vite build directory
-const staticPath = path.join(__dirname, '..', 'dist');
-app.use(express.static(staticPath, {
-  setHeaders: (res, path) => {
-    // Set proper MIME types for JavaScript and CSS files
-    if (path.endsWith('.js')) {
-      res.setHeader('Content-Type', 'application/javascript');
-    } else if (path.endsWith('.css')) {
-      res.setHeader('Content-Type', 'text/css');
-    }
-  }
-}));
-
-// Handle client-side routing - return index.html for all other GET requests
-app.get('*', (req, res) => {
-  res.sendFile(path.join(staticPath, 'index.html'));
-});
-
-// Explicitly handle preflight for all API routes
-app.options('/api/*', cors(corsOptions));
-
-// Test route to verify path is correct
+// API Routes
 app.get('/api/students', (_req, res) => {
-  res.json({ ok: true, hint: 'POST to this same path to create a student' });
+  res.json({ 
+    ok: true, 
+    message: 'Students API is working',
+    hint: 'POST to this same path to create a student',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.post('/api/students', async (req, res) => {
@@ -171,35 +162,45 @@ app.post('/api/students', async (req, res) => {
   }
 });
 
-// Start the server
-const server = app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-  console.log('Allowed origins:', ALLOWED_ORIGINS);
-});
-
-// Handle shutdown gracefully
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
+// Only start the server if this file is run directly (not when imported as a module)
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log('Allowed origins:', allowedOrigins);
   });
+
+  // Handle shutdown gracefully
+  const gracefulShutdown = () => {
+    console.log('Shutting down gracefully...');
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+
+    // Force close server after 5 seconds
+    setTimeout(() => {
+      console.error('Forcing server shutdown');
+      process.exit(1);
+    }, 5000);
+  };
+
+  // Listen for termination signals
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
+}
+
+// Log unexpected errors
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// Export for Vercel
-module.exports = app;
-
-// Log unexpected exits to diagnose auto-closing
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled Rejection:', reason);
-});
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
+  // Don't exit in production, let the process manager handle it
+  if (process.env.NODE_ENV !== 'production') {
+    process.exit(1);
+  }
 });
-process.on('SIGINT', () => {
-  console.log('Received SIGINT, shutting down...');
-  process.exit(0);
-});
-process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down...');
-  process.exit(0);
-});
+
+// Export the Express app for Vercel
+module.exports = app;
