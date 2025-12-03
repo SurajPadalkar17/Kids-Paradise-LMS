@@ -35,10 +35,18 @@ app.use((req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('API Error:', err);
+  console.error('API Error:', {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    body: req.body
+  });
+  
   res.status(500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
 
