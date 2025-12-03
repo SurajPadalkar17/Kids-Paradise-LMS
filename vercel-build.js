@@ -10,35 +10,10 @@ if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
-// Create public directory with a symlink to dist
-const publicDir = path.join(process.cwd(), 'public');
-if (!fs.existsSync(publicDir)) {
-  console.log('Creating public directory symlink to dist...');
-  try {
-    fs.symlinkSync(distDir, publicDir, 'dir');
-    console.log('Created symlink: public -> dist');
-  } catch (error) {
-    console.log('Could not create symlink, creating public directory instead...');
-    fs.mkdirSync(publicDir, { recursive: true });
-    
-    // Copy files from dist to public if they don't exist
-    if (fs.existsSync(distDir)) {
-      const files = fs.readdirSync(distDir);
-      files.forEach(file => {
-        const srcPath = path.join(distDir, file);
-        const destPath = path.join(publicDir, file);
-        if (!fs.existsSync(destPath)) {
-          fs.copyFileSync(srcPath, destPath);
-        }
-      });
-    }
-  }
-}
-
 // Run the Vite build
 console.log('Running Vite build...');
 try {
-  execSync('vite build', { stdio: 'inherit' });
+  execSync('npm run build', { stdio: 'inherit' });
   
   // Verify the build output
   if (!fs.existsSync(path.join(distDir, 'index.html'))) {
@@ -46,47 +21,46 @@ try {
     process.exit(1);
   }
   
-  // Ensure public directory has the latest build
-  if (fs.existsSync(publicDir) && !fs.lstatSync(publicDir).isSymbolicLink()) {
-    const files = fs.readdirSync(distDir);
-    files.forEach(file => {
-      const srcPath = path.join(distDir, file);
-      const destPath = path.join(publicDir, file);
-      
-      // Remove existing file/directory
-      if (fs.existsSync(destPath)) {
-        if (fs.lstatSync(destPath).isDirectory()) {
-          fs.rmSync(destPath, { recursive: true, force: true });
-        } else {
-          fs.unlinkSync(destPath);
-        }
+  // For Vercel, we need to ensure the output is in the expected location
+  // Copy all files from dist to the root of the output directory
+  const copyRecursiveSync = (src, dest) => {
+    const exists = fs.existsSync(src);
+    const stats = exists && fs.statSync(src);
+    const isDirectory = exists && stats.isDirectory();
+
+    if (isDirectory) {
+      if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
       }
-      
-      // Copy new file/directory
-      if (fs.lstatSync(srcPath).isDirectory()) {
-        fs.mkdirSync(destPath, { recursive: true });
-        // Recursively copy directory contents
-        const copyDir = (src, dest) => {
-          const entries = fs.readdirSync(src, { withFileTypes: true });
-          for (const entry of entries) {
-            const srcPath = path.join(src, entry.name);
-            const destPath = path.join(dest, entry.name);
-            if (entry.isDirectory()) {
-              fs.mkdirSync(destPath, { recursive: true });
-              copyDir(srcPath, destPath);
-            } else {
-              fs.copyFileSync(srcPath, destPath);
-            }
-          }
-        };
-        copyDir(srcPath, destPath);
-      } else {
-        fs.copyFileSync(srcPath, destPath);
-      }
-    });
-  }
+      fs.readdirSync(src).forEach(childItemName => {
+        copyRecursiveSync(
+          path.join(src, childItemName),
+          path.join(dest, childItemName)
+        );
+      });
+    } else {
+      fs.copyFileSync(src, dest);
+    }
+  };
   
-  console.log('Vite build completed successfully!');
+  // Copy files to the root directory for Vercel
+  const files = fs.readdirSync(distDir);
+  files.forEach(file => {
+    const srcPath = path.join(distDir, file);
+    const destPath = path.join(process.cwd(), file);
+    
+    if (fs.existsSync(destPath)) {
+      if (fs.lstatSync(destPath).isDirectory()) {
+        fs.rmSync(destPath, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(destPath);
+      }
+    }
+    
+    copyRecursiveSync(srcPath, destPath);
+  });
+  
+  console.log('Build output prepared for Vercel deployment');
 } catch (error) {
   console.error('Error during build:', error);
   process.exit(1);
