@@ -87,13 +87,15 @@ export default async (req, res) => {
         body: JSON.stringify(body, null, 2)
       });
 
-      // Validate name
-      if (!name || name.trim().length < 2) {
-        const error = new Error('Name is required and must be at least 2 characters long');
+      // Validate name (minimum 1 character after trim)
+      const trimmedName = name ? name.trim() : '';
+      if (!trimmedName) {
+        const error = new Error('Please enter a student name');
         error.details = { 
           received: body,
-          required: ['name (min 2 characters)']
+          required: ['name (required)']
         };
+        error.code = 'NAME_REQUIRED';
         console.error('Validation error:', error);
         throw error;
       }
@@ -115,8 +117,8 @@ export default async (req, res) => {
       // Create the profile with only existing columns
       // Let Supabase handle the ID generation by not including it here
       const studentData = {
-        full_name: name.trim(),
-        email: email ? email.trim() : `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`,
+        full_name: trimmedName,
+        email: email ? email.trim() : `${trimmedName.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`,
         grade: grade ? parseInt(grade, 10) : null,
         role: 'student',
         created_at: new Date().toISOString(),
