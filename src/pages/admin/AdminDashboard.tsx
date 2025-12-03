@@ -34,8 +34,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 type Activity = { when: string; user: string; action: string; details: string; status: string };
 
+// Import the API client
+import { studentApi, bookApi } from "@/lib/api";
+
 const AdminDashboard = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4001";
   const [openAdd, setOpenAdd] = useState(false);
   const [openIssue, setOpenIssue] = useState(false);
   const [openCollect, setOpenCollect] = useState(false);
@@ -352,31 +354,22 @@ const AdminDashboard = () => {
     }
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/students`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: studentForm.name,
-            email: studentForm.email,
-            grade: studentForm.grade,
-            password: studentForm.password,
-          }),
+        await studentApi.create({
+          name: studentForm.name,
+          email: studentForm.email,
+          grade: studentForm.grade,
+          password: studentForm.password,
         });
-        const contentType = res.headers.get("content-type") || "";
-        let data: any = null;
-        if (contentType.includes("application/json")) {
-          data = await res.json();
-        } else {
-          const text = await res.text();
-          if (!res.ok) throw new Error(text || "Non-JSON error from server");
-          // attempt to parse if it's JSON-like
-          try { data = JSON.parse(text); } catch { data = { message: text }; }
-        }
-        if (!res.ok) throw new Error(data?.error || "Failed to create student");
 
-        toast.success("Student created");
-        setActivities((prev) => [
-          { when: "just now", user: "Admin", action: "Added Student", details: `Name: ${studentForm.name} · Email: ${studentForm.email} · Grade: ${studentForm.grade || "N/A"}` , status: "ok" },
+        toast.success("Student created successfully!");
+        setActivities(prev => [
+          { 
+            when: "just now", 
+            user: "Admin", 
+            action: "Added Student", 
+            details: `Name: ${studentForm.name} · Email: ${studentForm.email} · Grade: ${studentForm.grade || "N/A"}`,
+            status: "ok" 
+          },
           ...prev,
         ]);
         // Refresh students list so dropdown includes the new student
