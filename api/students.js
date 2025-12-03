@@ -237,15 +237,29 @@ export default async (req, res) => {
       // Generate a password if not provided
       const password = body.password || Math.random().toString(36).slice(2) + 'A1!';
       
-      // First, check if user already exists
-      const { data: existingUser } = await supabase
+      console.log('Checking for existing user with email:', studentData.email);
+      const { data: existingUserCheck, error: checkError } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', studentData.email)
         .single();
+
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is 'no rows returned'
+        console.error('Error checking for existing user:', checkError);
+        throw new Error(`Error checking for existing user: ${checkError.message}`);
+      }
         
-      if (existingUser) {
-        throw new Error(`A user with email ${studentData.email} already exists`);
+      if (existingUserCheck) {
+        console.log('User already exists with email:', studentData.email);
+        return res.status(400).json({
+          success: false,
+          error: 'User with this email already exists',
+          message: 'A student with this email address is already registered',
+          details: {
+            email: studentData.email,
+            existingUserId: existingUserCheck.id
+          }
+        });
       }
       
       // Create auth user first
@@ -322,30 +336,6 @@ export default async (req, res) => {
         } catch (signInError) {
           console.error('Error during sign-in after user creation (non-fatal):', signInError);
         }
-      }
-
-      // Check if a user with this email already exists
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', studentData.email)
-        .maybeSingle();
-
-      if (existingUser) {
-        // Clean up auth user if it was created
-        if (authData?.user?.id) {
-          await supabase.auth.admin.deleteUser(authData.user.id);
-        }
-        
-        return res.status(400).json({
-          success: false,
-          error: 'User with this email already exists',
-          message: 'A student with this email address is already registered',
-          details: {
-            email: studentData.email,
-            existingUserId: existingUser.id
-          }
-        });
       }
 
       console.log('Student profile created successfully:', data);
