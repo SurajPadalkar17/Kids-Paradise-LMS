@@ -18,34 +18,91 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-const RAW_CORS = process.env.CORS_ORIGIN || 'http://localhost:5173';
-const ALLOWED_ORIGINS = RAW_CORS.split(',').map((s) => s.trim()).filter(Boolean);
+// Define allowed origins
+const RAW_CORS = process.env.CORS_ORIGIN || 'http://localhost:5173,https://kids-paradise-lms.vercel.app';
+const ALLOWED_ORIGINS = [...new Set([
+  ...RAW_CORS.split(',').map((s) => s.trim()).filter(Boolean),
+  'http://localhost:5173',
+  'https://kids-paradise-lms.vercel.app'
+])];
+
+console.log('Allowed CORS origins:', ALLOWED_ORIGINS);
+
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // allow non-browser requests
-    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-    // allow common localhost dev ports
-    const isLocalhost = /^http:\/\/localhost:(\d+)$/.test(origin) || /^http:\/\/127\.0\.0\.1:(\d+)$/.test(origin);
-    if (isLocalhost) return callback(null, true);
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      console.log('No origin header - allowing request');
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (ALLOWED_ORIGINS.includes(origin) || 
+        ALLOWED_ORIGINS.includes('*') || 
+        origin.endsWith('.vercel.app')) {
+      console.log(`Origin ${origin} is allowed`);
+      return callback(null, true);
+    }
+    
+    // Allow localhost for development
+    const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(origin);
+    if (isLocalhost) {
+      console.log(`Localhost origin ${origin} is allowed`);
+      return callback(null, true);
+    }
+    
+    console.error(`CORS blocked: ${origin} not in allowed origins`);
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
+  preflightContinue: false
 };
+
+// Enhanced request logger
+app.use((req, res, next) => {
+  const start = Date.now();
+  const { method, originalUrl, headers } = req;
+  
+  // Log request start
+  console.log(`[${new Date().toISOString()}] ${method} ${originalUrl}`, {
+    headers: {
+      origin: headers.origin,
+      'user-agent': headers['user-agent'],
+      referer: headers.referer
+    }
+  });
+
+  // Add CORS headers to all responses
+  const origin = headers.origin;
+  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.vercel.app'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  // For preflight requests, respond immediately
+  if (method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  
+  // Log response
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] ${method} ${originalUrl} - ${res.statusCode} (${duration}ms)`);
+  });
+  
+  next();
+});
 
 // Apply CORS with options
 app.use(cors(corsOptions));
 
-// Handle preflight requests
-app.options('*', cors(corsOptions));
-app.use(express.json());
-// Basic request logger
-app.use((req, _res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
+// Parse JSON bodies
+app.use(express.json({ limit: '10mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
@@ -69,8 +126,8 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(staticPath, 'index.html'));
 });
 
-// Explicitly handle preflight for POST /api/students
-app.options('/api/students', cors(corsOptions));
+// Explicitly handle preflight for all API routes
+app.options('/api/*', cors(corsOptions));
 
 // Test route to verify path is correct
 app.get('/api/students', (_req, res) => {
