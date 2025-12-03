@@ -51,8 +51,22 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/', (_req, res) => {
-  res.json({ ok: true, service: 'kidlit-backend', routes: ['/api/health', '/api/students'] });
+// Serve static files from the Vite build directory
+const staticPath = path.join(__dirname, '..', 'dist');
+app.use(express.static(staticPath, {
+  setHeaders: (res, path) => {
+    // Set proper MIME types for JavaScript and CSS files
+    if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    } else if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    }
+  }
+}));
+
+// Handle client-side routing - return index.html for all other GET requests
+app.get('*', (req, res) => {
+  res.sendFile(path.join(staticPath, 'index.html'));
 });
 
 // Explicitly handle preflight for POST /api/students
