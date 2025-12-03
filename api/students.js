@@ -1,4 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
 // Log environment variables for debugging (remove in production)
 console.log('Environment Variables:', {
@@ -47,15 +47,22 @@ async function parseRequestBody(req) {
   });
 }
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
+  console.log('=== New Request ===');
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Content-Type', 'application/json');
 
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS request');
     return res.status(200).end();
   }
 
@@ -63,7 +70,12 @@ module.exports = async (req, res) => {
     // Parse request body for POST requests
     if (req.method === 'POST') {
       const body = await parseRequestBody(req);
-      console.log('Request body:', JSON.stringify(body, null, 2));
+      console.log('Raw request body:', body);
+      console.log('Parsed request body:', JSON.stringify(body, null, 2));
+      
+      if (!body) {
+        throw new Error('Request body is empty or invalid JSON');
+      }
       
       // Extract and validate required fields
       const { name, email, grade } = body;
@@ -97,6 +109,23 @@ module.exports = async (req, res) => {
 
       console.log('Attempting to insert student:', JSON.stringify(studentData, null, 2));
 
+      console.log('Attempting to connect to Supabase...');
+      console.log('Supabase URL:', SUPABASE_URL);
+      console.log('Table: profiles');
+      
+      // Test connection first
+      const { data: testData, error: testError } = await supabase
+        .from('profiles')
+        .select('*')
+        .limit(1);
+        
+      if (testError) {
+        console.error('Supabase connection test failed:', testError);
+        throw new Error(`Supabase connection failed: ${testError.message}`);
+      }
+      
+      console.log('Supabase connection successful, inserting student data...');
+      
       const { data, error } = await supabase
         .from('profiles')
         .insert([studentData])
@@ -175,20 +204,32 @@ module.exports = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Server error:', {
-      message: error.message,
-      stack: error.stack,
-      details: error.details || 'No additional details'
-    });
+    console.error('=== SERVER ERROR ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', error.details || 'No additional details');
+    console.error('Error code:', error.code);
+    console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     
-    return res.status(500).json({ 
+    // More detailed error response
+    const errorResponse = {
       success: false,
       error: 'Internal server error',
       message: error.message,
-      ...(process.env.NODE_ENV === 'development' && { 
+      type: error.name || 'Error',
+      ...(process.env.NODE_ENV !== 'production' && {
         details: error.details,
-        stack: error.stack 
+        code: error.code,
+        stack: error.stack,
+        env: {
+          NODE_ENV: process.env.NODE_ENV,
+          SUPABASE_URL: SUPABASE_URL ? 'Set' : 'Missing',
+          SUPABASE_KEY: SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing'
+        }
       })
-    });
+    };
+    
+    console.error('Sending error response:', JSON.stringify(errorResponse, null, 2));
+    return res.status(500).json(errorResponse);
   }
 };
