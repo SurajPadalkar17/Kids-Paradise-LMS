@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "vercel-build": "echo 'No build required'"
+    "vercel-build": "echo 'Vercel Build Complete'",
+    "build": "echo 'Build script executed'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
