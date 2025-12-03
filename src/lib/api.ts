@@ -1,7 +1,13 @@
 // Handle both development and production environments
-const API_BASE = import.meta.env.DEV 
-  ? 'http://localhost:4001'  // Use local server in development
-  : (import.meta.env.VITE_API_BASE || '/api');  // Use /api in production (will be rewritten by Vercel)
+const getApiBase = () => {
+  if (import.meta.env.DEV) {
+    return 'http://localhost:4001';
+  }
+  // In production, use empty string since Vercel will handle the /api prefix
+  return '';
+};
+
+const API_BASE = getApiBase();
 
 export const api = {
   get: async (endpoint: string) => {
