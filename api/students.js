@@ -47,6 +47,76 @@ async function parseRequestBody(req) {
   });
 }
 
+// Student login handler
+async function handleStudentLogin(req, res) {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email and password are required'
+      });
+    }
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    
+    if (error) {
+      console.error('Login error:', error);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid email or password',
+        details: error.message
+      });
+    }
+    
+    // Get the user's profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+      
+    if (profileError) {
+      console.error('Error fetching user profile:', profileError);
+      return res.status(500).json({
+        success: false,
+        error: 'Error fetching user profile',
+        details: profileError.message
+      });
+    }
+    
+    // Check if user is a student
+    if (profile.role !== 'student') {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. Student account required.'
+      });
+    }
+    
+    // Return the session and user data
+    return res.status(200).json({
+      success: true,
+      session: data.session,
+      user: {
+        ...profile,
+        email: data.user.email
+      }
+    });
+    
+  } catch (error) {
+    console.error('Login handler error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'An error occurred during login',
+      details: error.message
+    });
+  }
+}
+
 export default async (req, res) => {
   console.log('=== New Request ===');
   console.log('Method:', req.method);
@@ -67,7 +137,14 @@ export default async (req, res) => {
   }
 
   try {
-    // Parse request body for POST requests
+    // Handle login requests
+    if (req.method === 'POST' && req.url.endsWith('/login')) {
+      const body = await parseRequestBody(req);
+      req.body = body; // Attach parsed body to request object
+      return await handleStudentLogin(req, res);
+    }
+    
+    // Parse request body for other POST requests
     if (req.method === 'POST') {
       const body = await parseRequestBody(req);
       console.log('Raw request body:', body);
@@ -159,14 +236,30 @@ export default async (req, res) => {
 
       // First, create the auth user
       console.log('Creating auth user with email:', studentData.email);
+      const password = body.password || Math.random().toString(36).slice(2) + 'A1!'; // Use provided password or generate a random one
+      
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: studentData.email,
-        password: Math.random().toString(36).slice(2) + 'A1!', // Generate a strong random password
+        password: password,
         email_confirm: true, // Auto-confirm the email
         user_metadata: {
-          full_name: studentData.full_name
+          full_name: studentData.full_name,
+          role: 'student'
         }
       });
+      
+      // If password was provided, we need to sign in the user to set the session
+      if (body.password) {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: studentData.email,
+          password: password
+        });
+        
+        if (signInError) {
+          console.error('Error signing in user after creation:', signInError);
+          // Continue with creation even if sign-in fails
+        }
+      }
 
       if (authError) {
         console.error('Auth error:', authError);
