@@ -338,7 +338,7 @@ export default async (req, res) => {
         }
       }
 
-      console.log('Student profile created successfully:', data);
+      console.log('Student profile created successfully:', profileData);
       return res.status(201).json({
         success: true,
         data: {
