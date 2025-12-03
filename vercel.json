@@ -5,12 +5,11 @@
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist",
-        "outputDirectory": "dist"
+        "distDir": "dist"
       }
     },
     {
-      "src": "api/index.js",
+      "src": "server/index.js",
       "use": "@vercel/node"
     }
   ],

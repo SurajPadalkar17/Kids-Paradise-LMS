@@ -1,9 +1,7 @@
 // vercel-build.js
-const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-
-console.log('Starting Vercel build process...');
+const { execSync } = require('child_process');
 
 // Create public directory if it doesn't exist
 const publicDir = path.join(process.cwd(), 'public');
@@ -12,10 +10,10 @@ if (!fs.existsSync(publicDir)) {
   fs.mkdirSync(publicDir);
 }
 
-// Create a placeholder index.html if it doesn't exist
+// Create a simple index.html file in the public directory
 const indexPath = path.join(publicDir, 'index.html');
 if (!fs.existsSync(indexPath)) {
-  console.log('Creating placeholder index.html...');
+  console.log('Creating index.html in public directory...');
   fs.writeFileSync(indexPath, `<!DOCTYPE html>
 <html>
 <head>
@@ -28,8 +26,8 @@ if (!fs.existsSync(indexPath)) {
 </html>`);
 }
 
-// Run Vite build
+// Run the Vite build
 console.log('Running Vite build...');
 execSync('vite build', { stdio: 'inherit' });
 
-console.log('Vercel build completed successfully!');
+console.log('Build completed successfully!');
