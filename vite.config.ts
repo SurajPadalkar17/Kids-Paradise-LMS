@@ -28,21 +28,42 @@ export default defineConfig(({ mode }) => {
       outDir: "dist",
       emptyOutDir: true,
       sourcemap: isProduction ? false : 'inline',
-      minify: isProduction ? 'terser' : false,
+      minify: isProduction ? 'esbuild' : false,
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom', 'react-router-dom'],
+          manualChunks: (id) => {
+            if (id.includes('node_modules')) {
+              if (id.includes('@radix-ui')) {
+                return 'radix';
+              }
+              if (id.includes('@tanstack') || id.includes('react-query')) {
+                return 'react-query';
+              }
+              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+                return 'vendor';
+              }
+              return 'vendor';
+            }
           },
           entryFileNames: 'assets/[name].[hash].js',
           chunkFileNames: 'assets/[name].[hash].js',
-          assetFileNames: 'assets/[name].[hash].[ext]',
+          assetFileNames: 'assets/[name].[hash][extname]',
         },
       },
       chunkSizeWarningLimit: 1000,
+      target: 'esnext',
+      modulePreload: {
+        polyfill: false,
+      },
+      cssCodeSplit: true,
     },
     plugins: [
-      react(), 
+      react({
+        // Enable React fast refresh
+        jsxImportSource: 'react',
+        // Use SWC for faster builds
+        tsDecorators: true,
+      }), 
       mode === "development" && componentTagger()
     ].filter(Boolean),
     resolve: {
