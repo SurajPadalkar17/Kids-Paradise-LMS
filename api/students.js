@@ -22,10 +22,21 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw error;
 }
 
+// Create admin client with service role
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
-    persistSession: false
+    persistSession: false,
+    detectSessionInUrl: false
+  }
+});
+
+// Ensure we're using the service role
+const serviceRoleClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false
   }
 });
 
@@ -221,20 +232,32 @@ export default async (req, res) => {
       
       console.log('Supabase connection successful, inserting student data...');
       
-      // First, create the auth user with service role
-      console.log('Creating auth user with email:', studentData.email);
-      const password = body.password || Math.random().toString(36).slice(2) + 'A1!'; // Use provided password or generate a random one
+      console.log('Starting student creation process...');
       
-      // Create auth user with email confirmation
+      // Generate a password if not provided
+      const password = body.password || Math.random().toString(36).slice(2) + 'A1!';
+      
+      // First, check if user already exists
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', studentData.email)
+        .single();
+        
+      if (existingUser) {
+        throw new Error(`A user with email ${studentData.email} already exists`);
+      }
+      
+      // Create auth user first
+      console.log('Creating auth user with email:', studentData.email);
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: studentData.email,
         password: password,
-        email_confirm: true, // Auto-confirm the email
+        email_confirm: true,
         user_metadata: {
           full_name: studentData.full_name,
           role: 'student'
         },
-        // Ensure the user is created with the student role
         app_metadata: {
           role: 'student'
         }
@@ -248,7 +271,8 @@ export default async (req, res) => {
       console.log('Auth user created successfully, ID:', authData.user.id);
       
       // Create profile using the service role client
-      const { data: profileData, error: profileError } = await supabase
+      console.log('Creating profile...');
+      const { data: profileData, error: profileError } = await serviceRoleClient
         .from('profiles')
         .insert([{
           id: authData.user.id,
@@ -265,7 +289,18 @@ export default async (req, res) => {
       if (profileError) {
         console.error('Profile creation error:', profileError);
         // Clean up auth user if profile creation fails
-        await supabase.auth.admin.deleteUser(authData.user.id);
+        try {
+          await supabase.auth.admin.deleteUser(authData.user.id);
+          console.log('Cleaned up auth user after profile creation failed');
+        } catch (cleanupError) {
+          console.error('Failed to clean up auth user:', cleanupError);
+        }
+        
+        // Provide more detailed error for RLS issues
+        if (profileError.code === '42501') {
+          throw new Error('Permission denied. Please check your Row Level Security policies.');
+        }
+        
         throw new Error(`Failed to create user profile: ${profileError.message}`);
       }
 
