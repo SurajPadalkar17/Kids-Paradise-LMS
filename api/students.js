@@ -87,11 +87,24 @@ export default async (req, res) => {
         body: JSON.stringify(body, null, 2)
       });
 
-      if (!name) {
-        const error = new Error('Name is required');
+      // Validate name
+      if (!name || name.trim().length < 2) {
+        const error = new Error('Name is required and must be at least 2 characters long');
         error.details = { 
           received: body,
-          required: ['name']
+          required: ['name (min 2 characters)']
+        };
+        console.error('Validation error:', error);
+        throw error;
+      }
+
+      // Validate email format if provided
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (email && !emailRegex.test(email)) {
+        const error = new Error('Invalid email format');
+        error.details = {
+          received: { email },
+          expected: 'valid email format (e.g., user@example.com)'
         };
         console.error('Validation error:', error);
         throw error;
@@ -100,11 +113,14 @@ export default async (req, res) => {
       console.log('Attempting to create student profile...');
       
       // Create the profile with only existing columns
+      // Let Supabase handle the ID generation by not including it here
       const studentData = {
-        full_name: name,
-        email: email || `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`,
+        full_name: name.trim(),
+        email: email ? email.trim() : `${name.replace(/\s+/g, '.').toLowerCase()}@kids-paradise.com`,
         grade: grade ? parseInt(grade, 10) : null,
-        role: 'student'
+        role: 'student',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
       console.log('Attempting to insert student:', JSON.stringify(studentData, null, 2));
@@ -126,10 +142,24 @@ export default async (req, res) => {
       
       console.log('Supabase connection successful, inserting student data...');
       
+      // First, check if a user with this email already exists
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', studentData.email)
+        .maybeSingle();
+
+      if (existingUser) {
+        const error = new Error('A user with this email already exists');
+        error.code = 'DUPLICATE_EMAIL';
+        throw error;
+      }
+
+      // Insert the new student
       const { data, error } = await supabase
         .from('profiles')
         .insert([studentData])
-        .select();
+        .select('id, full_name, email, grade, role, created_at, updated_at');
 
       if (error) {
         console.error('Database error details:', {
