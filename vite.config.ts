@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
-    base: env.VITE_BASE_URL || '/',
+    base: '/Kids-Paradise-LMS/',
     server: {
       host: "::",
       port: 8080,
