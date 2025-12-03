@@ -351,7 +351,7 @@ const AdminDashboard = () => {
     }
   };
 
-  const onSubmitStudent = (e: React.FormEvent) => {
+  const onSubmitStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentForm.name) {
       toast.error("Name is required");
@@ -361,44 +361,60 @@ const AdminDashboard = () => {
       toast.error("Password is required");
       return;
     }
-    (async () => {
-      try {
-        await studentApi.create({
+    
+    try {
+      const response = await fetch('/api/students', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           name: studentForm.name,
           email: studentForm.email,
           grade: studentForm.grade,
           password: studentForm.password
-        });
+        }),
+      });
 
-        toast.success("Student created successfully!");
-        setActivities(prev => [
-          { 
-            when: "just now", 
-            user: "Admin", 
-            action: "Added Student", 
-            details: `Name: ${studentForm.name} · Email: ${studentForm.email} · Grade: ${studentForm.grade || "N/A"}`,
-            status: "ok" 
-          },
-          ...prev,
-        ]);
-        // Refresh students list so dropdown includes the new student
-        const { data: stu, error: stuErr } = await supabase
-          .from("profiles")
-          .select("id, full_name, email")
-          .eq("role", "student");
-        if (!stuErr) setStudents(stu || []);
-
-        setOpenStudent(false);
-        setStudentForm({ 
-          name: "", 
-          email: "", 
-          grade: "",
-          password: ""
-        });
-      } catch (err: any) {
-        toast.error(err.message || "Failed to create student");
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create student');
       }
-    })();
+
+      toast.success("Student created successfully!");
+      setActivities(prev => [
+        { 
+          when: "just now", 
+          user: "Admin", 
+          action: "Added Student", 
+          details: `Name: ${studentForm.name} · Email: ${studentForm.email} · Grade: ${studentForm.grade || "N/A"}`,
+          status: "ok" 
+        },
+        ...prev,
+      ]);
+      
+      // Refresh students list
+      const { data: stu, error: stuErr } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .eq("role", "student");
+      if (!stuErr) setStudents(stu || []);
+
+      setOpenStudent(false);
+      setStudentForm({ 
+        name: "", 
+        email: "", 
+        grade: "",
+        password: ""
+      });
+    } catch (err: any) {
+      console.error('Error creating student:', err);
+      const errorMessage = err.message.includes('already exists') 
+        ? 'A student with this email already exists. Please use a different email.'
+        : err.message || 'Failed to create student. Please try again.';
+      toast.error(errorMessage);
+    }
   };
 
   return (
